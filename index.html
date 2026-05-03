@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Upload & Gallery</title>
+
+<style>
+body{
+  background:#111;
+  color:white;
+  font-family:Arial;
+  text-align:center;
+}
+button{
+  padding:10px 20px;
+  margin:10px;
+  border:none;
+  border-radius:8px;
+  background:#333;
+  color:white;
+  cursor:pointer;
+}
+.section{display:none;}
+.active{display:block;}
+
+.gallery{
+  display:grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap:15px;
+  padding:20px;
+}
+.card{
+  background:#1a1a1a;
+  padding:10px;
+  border-radius:10px;
+}
+.card img{
+  width:100%;
+  height:200px;
+  object-fit:cover;
+  border-radius:10px;
+}
+.info{
+  margin-top:5px;
+  font-size:13px;
+  color:#ccc;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Upload & Gallery</h2>
+
+<button onclick="show('upload')">Upload</button>
+<button onclick="show('gallery')">Gallery</button>
+
+<!-- UPLOAD -->
+<div id="upload" class="section active">
+  <input type="file" id="file">
+  <br>
+  <button onclick="upload()">Upload ảnh</button>
+  <p id="status"></p>
+</div>
+
+<!-- GALLERY -->
+<div id="gallery" class="section">
+  <div class="gallery" id="galleryBox"></div>
+</div>
+
+<script>
+const USERNAME = "LinhNah0308";
+const REPO = "images-storage";
+
+function show(id){
+  document.querySelectorAll(".section").forEach(e=>e.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+  if(id==="gallery") loadGallery();
+}
+
+// FORMAT SIZE
+function formatSize(bytes){
+  return (bytes/1024).toFixed(2)+" KB";
+}
+
+// LOAD GALLERY
+async function loadGallery(){
+  const res = await fetch(`https://raw.githubusercontent.com/${USERNAME}/${REPO}/main/images.json`);
+  let data = [];
+  try{ data = await res.json(); }catch{}
+
+  const box = document.getElementById("galleryBox");
+  box.innerHTML="";
+
+  data.reverse().forEach(img=>{
+    const div = document.createElement("div");
+    div.className="card";
+
+    div.innerHTML = `
+      <img src="${img.url}">
+      <div class="info">
+        Ngày: ${img.date}<br>
+        Dung lượng: ${img.size}
+      </div>
+    `;
+    box.appendChild(div);
+  });
+}
+
+// UPLOAD
+async function upload(){
+  const file = document.getElementById("file").files[0];
+  if(!file) return alert("Chọn ảnh");
+
+  const reader = new FileReader();
+  reader.readAsDataURL(file);
+
+  reader.onload = async ()=>{
+    const base64 = reader.result.split(',')[1];
+
+    // upload ảnh
+    await fetch(`https://api.github.com/repos/${USERNAME}/${REPO}/contents/${file.name}`,{
+      method:"PUT",
+      headers:{
+        "Authorization":"token "+TOKEN,
+        "Content-Type":"application/json"
+      },
+      body: JSON.stringify({
+        message:"upload image",
+        content:base64
+      })
+    });
+
+    const url = `https://raw.githubusercontent.com/${USERNAME}/${REPO}/main/${file.name}`;
+
+    // lấy json cũ
+    let images = [];
+    try{
+      const res = await fetch(`https://raw.githubusercontent.com/${USERNAME}/${REPO}/main/images.json`);
+      images = await res.json();
+    }catch{}
+
+    // thêm ảnh mới
+    images.push({
+      url:url,
+      date:new Date().toLocaleString(),
+      size:formatSize(file.size)
+    });
+
+    // upload lại json
+    const jsonBase64 = btoa(unescape(encodeURIComponent(JSON.stringify(images,null,2))));
+
+    // cần SHA (quan trọng)
+    let sha="";
+    try{
+      const fileRes = await fetch(`https://api.github.com/repos/${USERNAME}/${REPO}/contents/images.json`,{
+        headers:{Authorization:"token "+TOKEN}
+      });
+      const fileData = await fileRes.json();
+      sha = fileData.sha;
+    }catch{}
+
+    await fetch(`https://api.github.com/repos/${USERNAME}/${REPO}/contents/images.json`,{
+      method:"PUT",
+      headers:{
+        "Authorization":"token "+TOKEN,
+        "Content-Type":"application/json"
+      },
+      body: JSON.stringify({
+        message:"update images",
+        content:jsonBase64,
+        sha: sha || undefined
+      })
+    });
+
+    document.getElementById("status").innerText="Upload thành công!";
+  }
+}
+</script>
+
+</body>
+</html>
